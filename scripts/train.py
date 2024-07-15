@@ -1,15 +1,10 @@
 import os
 import time
 import torch
-import logging
-import argparse
 from transformers import T5ForConditionalGeneration, T5Tokenizer, Trainer, TrainingArguments, TrainerCallback
 from datasets import load_metric, Dataset
 import pandas as pd
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 class SaveCheckpointCallback(TrainerCallback):
     def __init__(self, trainer, save_interval=600):  # Save checkpoint every 600 seconds (10 minutes)
@@ -27,7 +22,7 @@ class SaveCheckpointCallback(TrainerCallback):
             state.save_to_json(os.path.join(output_dir, 'trainer_state.json'))
             torch.save(self.trainer.optimizer.state_dict(), os.path.join(output_dir, 'optimizer.pt'))
             torch.save(self.trainer.lr_scheduler.state_dict(), os.path.join(output_dir, 'scheduler.pt'))
-            logger.info(f"Checkpoint saved at step {state.global_step} to {output_dir}")
+            print(f"Checkpoint saved at step {state.global_step} to {output_dir}")
 
 # Load the dataset from a CSV file
 def load_and_prepare_dataset(csv_path):
@@ -49,15 +44,14 @@ def check_device():
         device = 'mps'
     else:
         device = 'cpu'
-    logger.info(f"Using device: {device}")
+    print(f"Using device: {device}")
     return device
 
 def main(args):
-    logger.info("Loading datasets...")
+    print("Loading datasets...")
     train_dataset = load_and_prepare_dataset(args.train_csv_path)
-    eval_dataset = load_and_prepare_dataset(args.eval_csv_path)
 
-    logger.info("Loading model and tokenizer...")
+    print("Loading model and tokenizer...")
     tokenizer = T5Tokenizer.from_pretrained(args.model_name)
     model = T5ForConditionalGeneration.from_pretrained(args.model_name)
 
@@ -74,9 +68,8 @@ def main(args):
         }
         return encodings
 
-    logger.info("Tokenizing datasets...")
+    print("Tokenizing datasets...")
     tokenized_train_dataset = train_dataset.map(tokenize, batched=True)
-    tokenized_eval_dataset = eval_dataset.map(tokenize, batched=True)
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,
@@ -96,20 +89,6 @@ def main(args):
         fp16=True if args.device == 'cuda' else False,  # Enable fp16 only for CUDA
     )
 
-    # Load the BLEU metric
-    bleu = load_metric('sacrebleu')
-
-    # Define the compute_metrics function
-    def compute_metrics(eval_pred):
-        predictions, labels = eval_pred
-        decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
-        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-
-        # Replace -100 in the labels as we can't decode them
-        decoded_labels = [[label] for label in decoded_labels]
-
-        result = bleu.compute(predictions=decoded_preds, references=decoded_labels)
-        return {"bleu": result["score"]}
 
     # Check if there's a valid checkpoint
     last_checkpoint = None
@@ -126,8 +105,6 @@ def main(args):
         model=model,
         args=training_args,
         train_dataset=tokenized_train_dataset,
-        eval_dataset=tokenized_eval_dataset,
-        compute_metrics=compute_metrics,
     )
 
     # Add the callback to the trainer
@@ -136,30 +113,33 @@ def main(args):
 
     # Train the model
     if last_checkpoint:
-        logger.info(f"Resuming from checkpoint: {last_checkpoint}")
+        print(f"Resuming from checkpoint: {last_checkpoint}")
         trainer.train(resume_from_checkpoint=last_checkpoint)
     else:
-        logger.info("No checkpoint found. Starting training from scratch.")
+        print("No checkpoint found. Starting training from scratch.")
         trainer.train()
 
     # Save the model
-    logger.info("Saving the model...")
+    print("Saving the model...")
     model.save_pretrained(args.save_model_path)
     tokenizer.save_pretrained(args.save_model_path)
 
-    # Evaluate the model
-    logger.info("Evaluating the model...")
-    eval_results = trainer.evaluate()
-    logger.info(f"Evaluation results: {eval_results}")
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a T5 model for paraphrasing.")
-    parser.add_argument('--train_csv_path', type=str, required=True, help="Path to the training dataset CSV file.")
-    parser.add_argument('--eval_csv_path', type=str, required=True, help="Path to the evaluation dataset CSV file.")
-    parser.add_argument('--output_dir', type=str, required=True, help="Directory to save checkpoints and model outputs.")
-    parser.add_argument('--save_model_path', type=str, required=True, help="Path to save the final model.")
-    parser.add_argument('--model_name', type=str, default='t5-small', help="Model name or path to a pre-trained model.")
-    args = parser.parse_args()
+    train_csv_path = "path/to/your/train_dataset.csv"
+    eval_csv_path = "path/to/your/eval_dataset.csv"
+    output_dir = "path/to/output_directory"
+    save_model_path = "path/to/save_model"
+    model_name = 't5-small'
 
+    class Args:
+        pass
+
+    args = Args()
+    args.train_csv_path = train_csv_path
+    args.eval_csv_path = eval_csv_path
+    args.output_dir = output_dir
+    args.save_model_path = save_model_path
+    args.model_name = model_name
     args.device = check_device()
+
     main(args)
