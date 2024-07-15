@@ -17,4 +17,4 @@ The dataset used in this project is primarily from the PAWS dataset, available [
 
 Install the required packages:
 ```sh
-pip install transformers datasets sacrebleu accelerate torch
+pip install transformers datasets sacrebleu accelerate torch sentencepiece
