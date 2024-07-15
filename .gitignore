@@ -1,0 +1,6 @@
+data/
+*.csv
+models/
+*.pt
+*.json
+logs/
